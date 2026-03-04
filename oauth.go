@@ -26,6 +26,15 @@ type Config struct {
 
 	// KeyID is the optional "kid" header included in the JWT.
 	KeyID string
+
+	// SigningMethod is the JWT signing algorithm. Defaults to RS256 if nil.
+	SigningMethod jwt.SigningMethod
+}
+
+// CustomClaims extends jwt.RegisteredClaims with an OAuth scope list.
+type CustomClaims struct {
+	Scope []string `json:"scope"`
+	jwt.RegisteredClaims
 }
 
 // Client returns an *http.Client whose requests are automatically
@@ -42,6 +51,8 @@ func (c *Config) Client(ctx context.Context) *http.Client {
 // jwtTokenSource implements oauth2.TokenSource. Each call to Token()
 // performs a client_credentials grant using a freshly signed JWT assertion.
 type jwtTokenSource struct {
+	// ctx is stored to satisfy oauth2.TokenSource, which does not
+	// accept a context parameter. Use Config.Client to control lifetime.
 	ctx    context.Context
 	config *Config
 }
@@ -62,18 +73,25 @@ func (s *jwtTokenSource) Token() (*oauth2.Token, error) {
 
 // buildAssertion creates and signs the JWT client assertion.
 func buildAssertion(c *Config) (string, error) {
-	//Create the Claims
+	now := time.Now()
 	claims := CustomClaims{
-		[]string{"rest_webservices"},
-		jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Minute * 60)),
+		Scope: c.OAuth2.Scopes,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour)),
 			Issuer:    c.OAuth2.ClientID,
 			Audience:  jwt.ClaimStrings{c.OAuth2.Endpoint.TokenURL},
-			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			IssuedAt:  jwt.NewNumericDate(now),
+			Subject:   c.OAuth2.ClientID,
+			ID:        fmt.Sprintf("%d", now.UnixNano()),
 		},
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodPS256, claims)
+	signingMethod := c.SigningMethod
+	if signingMethod == nil {
+		signingMethod = jwt.SigningMethodRS256
+	}
+
+	token := jwt.NewWithClaims(c.SigningMethod, claims)
 	if c.KeyID != "" {
 		token.Header["kid"] = c.KeyID
 	}
@@ -84,10 +102,4 @@ func buildAssertion(c *Config) (string, error) {
 // LoadPrivateKey parses an RSA private key from PEM-encoded bytes.
 func LoadPrivateKey(pemData []byte) (*rsa.PrivateKey, error) {
 	return jwt.ParseRSAPrivateKeyFromPEM(pemData)
-}
-
-// Data for the custom claims
-type CustomClaims struct {
-	Scope []string `json:"scope"`
-	jwt.RegisteredClaims
 }
