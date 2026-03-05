@@ -19,7 +19,7 @@ const (
 // the private_key_jwt client authentication method.
 type Config struct {
 	// OAuth2 config containing ClientID, TokenURL, and Scopes.
-	OAuth2 *oauth2.Config
+	*oauth2.Config
 
 	// PrivKey is the RSA private key used to sign JWT assertions.
 	PrivKey *rsa.PrivateKey
@@ -64,7 +64,7 @@ func (s *jwtTokenSource) Token() (*oauth2.Token, error) {
 		return nil, fmt.Errorf("building JWT assertion: %w", err)
 	}
 
-	return s.config.OAuth2.Exchange(s.ctx, "",
+	return s.config.Exchange(s.ctx, "",
 		oauth2.SetAuthURLParam("grant_type", "client_credentials"),
 		oauth2.SetAuthURLParam("client_assertion_type", clientAssertionType),
 		oauth2.SetAuthURLParam("client_assertion", assertion),
@@ -75,13 +75,13 @@ func (s *jwtTokenSource) Token() (*oauth2.Token, error) {
 func buildAssertion(c *Config) (string, error) {
 	now := time.Now()
 	claims := CustomClaims{
-		Scope: c.OAuth2.Scopes,
+		Scope: c.Scopes,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour)),
-			Issuer:    c.OAuth2.ClientID,
-			Audience:  jwt.ClaimStrings{c.OAuth2.Endpoint.TokenURL},
+			Issuer:    c.ClientID,
+			Audience:  jwt.ClaimStrings{c.Endpoint.TokenURL},
 			IssuedAt:  jwt.NewNumericDate(now),
-			Subject:   c.OAuth2.ClientID,
+			Subject:   c.ClientID,
 			ID:        fmt.Sprintf("%d", now.UnixNano()),
 		},
 	}
